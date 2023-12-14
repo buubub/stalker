@@ -1,6 +1,8 @@
+import datetime
 import discord
 import os
 from dotenv import load_dotenv
+from pprint import pprint
 
 load_dotenv()
 token = str(os.getenv("TOKEN"))
@@ -10,6 +12,12 @@ connections = {}
 @bot.event
 async def on_ready():
     print(f"{bot.user} is ready and online!")
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    if member.id == bot.user.id and member.guild.id in connections and after.channel is None:
+        vc = connections[member.guild.id]
+        vc.stop_recording()
 
 @bot.slash_command(description = "Ping")
 async def ping(ctx):
@@ -50,7 +58,13 @@ async def stop_callback(sink: discord.sinks, channel: discord.TextChannel, *args
         for user_id, audio in sink.audio_data.items()
     ]
     await sink.vc.disconnect()
-    files = [discord.File(audio.file, f"{user_id}.{sink.encoding}") for user_id, audio in sink.audio_data.items()]
-    await channel.send(f"finished recording audio for: {', '.join(recorded_users)}.", files=files)
+
+    timestamp = datetime.datetime.now().strftime("%d-%m-%Y %H%M%S")
+    dir = os.path.join("output", timestamp)
+    os.mkdir(dir)
+
+    for user_id, audio in sink.audio_data.items():
+        with open(os.path.join(dir, f"{user_id}.{sink.encoding}"), "wb") as f:
+            f.write(audio.file.getbuffer())
 
 bot.run(token)
