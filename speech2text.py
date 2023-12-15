@@ -1,16 +1,24 @@
+from datetime import  timedelta
 import os
-import speech_recognition as sr
+import whisper
 
-r = sr.Recognizer()
+def get_user_transcript(recordTimetamp, username, file):
+    userTranscript = {}
+    model = whisper.load_model("small")
+    transcription = model.transcribe(file, fp16=False)
 
-file = os.path.join("output", "14-12-2023 080336", "259410894256209920.wav")
-with sr.AudioFile(file) as source:
-    audio_data = r.record(source)
+    for transcript in transcription['segments']:
+        second = int(transcript['start'])
+        microsecond = int((transcript['start'] - second) * 1e6)
+        delta = timedelta(seconds=second, microseconds=microsecond)
+        timestamp = recordTimetamp + delta
 
-text = r.recognize_google(audio_data, language="id-ID")
-timestamps = [f"{int(segment.start / 1000)}:{int(segment.start / 1000) + 1}" for segment in audio_data]
+        key = f"{timestamp.strftime('%H:%M:%S.%f')} @{username}"
+        userTranscript.update({key: transcript['text'].strip()})
 
-results = list(zip(timestamps, text.split()))
+    return userTranscript
 
-for timestamp, text in results:
-    print(f'{timestamp} {text}')
+def compile_user_transcript(userTranscripts, dir):
+    with open(os.path.join(dir, 'transcript.txt'), 'w') as file:
+        for timestamp, text in userTranscripts:
+            file.write(f'{timestamp}: {text}\n')

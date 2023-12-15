@@ -1,8 +1,8 @@
-import datetime
+from datetime import datetime
 import discord
 import os
+import speech2text
 from dotenv import load_dotenv
-from pprint import pprint
 
 load_dotenv()
 token = str(os.getenv("TOKEN"))
@@ -33,10 +33,12 @@ async def stalk(ctx):
     vc = await voice.channel.connect()
     connections.update({ctx.guild.id: vc})
 
+    recordDatetime = datetime.now()
     vc.start_recording(
-        discord.sinks.WaveSink(),
+        discord.sinks.MP3Sink(),
         stop_callback,
-        ctx.channel
+        ctx.channel,
+        recordDatetime
     )
     await ctx.respond("Started stalking. .")
 
@@ -52,19 +54,25 @@ async def stop(ctx):
     else:
         await ctx.respond("I am currently not stalking!")
 
-async def stop_callback(sink: discord.sinks, channel: discord.TextChannel, *args):
-    recorded_users = [
-        f"<@{user_id}>"
-        for user_id, audio in sink.audio_data.items()
-    ]
+async def stop_callback(sink: discord.sinks, channel: discord.TextChannel, recordTimestamp: datetime):
     await sink.vc.disconnect()
 
-    timestamp = datetime.datetime.now().strftime("%d-%m-%Y %H%M%S")
+    timestamp = datetime.now().strftime("%d-%m-%Y %H%M%S")
     dir = os.path.join("output", timestamp)
     os.mkdir(dir)
 
+    userTranscripts = {}
+
     for user_id, audio in sink.audio_data.items():
-        with open(os.path.join(dir, f"{user_id}.{sink.encoding}"), "wb") as f:
+        file = os.path.join(dir, f"{user_id}.{sink.encoding}")
+        with open(file, "wb") as f:
             f.write(audio.file.getbuffer())
+        user = channel.guild.get_member(user_id)
+        userTranscripts.update(speech2text.get_user_transcript(recordTimestamp, user.display_name, file))
+
+    if len(userTranscripts):
+        speech2text.compile_user_transcript(sorted(userTranscripts.items()), dir)
+        file = discord.File(os.path.join(dir, "transcript.txt"), f"{dir}.txt")
+        await channel.send(f"Finished stalking!", file=file)
 
 bot.run(token)
